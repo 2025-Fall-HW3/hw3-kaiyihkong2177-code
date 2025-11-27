@@ -62,7 +62,11 @@ class EqualWeightPortfolio:
         """
         TODO: Complete Task 1 Below
         """
-
+        assets_to_weight = df.columns[df.columns != self.exclude]
+        N = len(assets_to_weight)
+        weight = 1.0 / N
+        # 將所有非 SPY 資產的權重設定為 1/N
+        self.portfolio_weights.loc[:, assets_to_weight] = weight
         """
         TODO: Complete Task 1 Above
         """
@@ -113,7 +117,24 @@ class RiskParityPortfolio:
         """
         TODO: Complete Task 2 Below
         """
+        assets_to_weight = df.columns[df.columns != self.exclude]
 
+        for i in range(self.lookback + 1, len(df)):
+            # 取得 lookback 期間的報酬率
+            R_n = df_returns.copy()[assets_to_weight].iloc[i - self.lookback : i]
+
+            # 計算資產的波動度 (Volatility = 標準差)
+            sigma = R_n.std()
+            
+            # 計算反向波動度 (Inverse Volatility)
+            inv_volatility = 1.0 / sigma
+            
+            # 正規化以獲得權重 (確保總和為 1)
+            # w_i = (1/sigma_i) / sum(1/sigma_j)
+            weights = inv_volatility / inv_volatility.sum()
+
+            # 將權重分配給當前的再平衡日
+            self.portfolio_weights.loc[df.index[i], assets_to_weight] = weights
 
 
         """
@@ -187,11 +208,18 @@ class MeanVariancePortfolio:
                 """
                 TODO: Complete Task 3 Below
                 """
+# 1. 初始化決策變數 w
+                #    [cite_start]lb=0.0 實現長倉限制 (long-only constraint: w_i >= 0) [cite: 48]
+                #    ub=1.0 限制權重不超過 1
+                w = model.addMVar(n, name="w", lb=0.0, ub=1.0)
 
-                # Sample Code: Initialize Decision w and the Objective
-                # NOTE: You can modify the following code
-                w = model.addMVar(n, name="w", ub=1)
-                model.setObjective(w.sum(), gp.GRB.MAXIMIZE)
+                # 2. 設定目標函式: Maximize (Expected Return) - (Risk Penalty)
+                #    [cite_start]目標 = w^T * mu - (gamma/2) * w^T * Sigma * w [cite: 45]
+                objective = w @ mu - (gamma / 2) * w @ Sigma @ w
+                model.setObjective(objective, gp.GRB.MAXIMIZE)
+
+                # [cite_start]3. 加入限制條件: 無槓桿限制 (sum(w_i) = 1) [cite: 48]
+                model.addConstr(w.sum() == 1, name="budget_constraint")
 
                 """
                 TODO: Complete Task 3 Above
